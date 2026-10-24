@@ -12,12 +12,12 @@ enum ReceiptCategoryOption: String, CaseIterable, AppEnum {
 
     static var typeDisplayRepresentation = TypeDisplayRepresentation(name: "分类")
 
-    static var caseDisplayRepresentations: [Self: TypeDisplayRepresentation] = [
-        .food:          TypeDisplayRepresentation(name: "餐饮 🍜"),
-        .transport:     TypeDisplayRepresentation(name: "交通 🚌"),
-        .shopping:      TypeDisplayRepresentation(name: "购物 🛍️"),
-        .entertainment: TypeDisplayRepresentation(name: "娱乐 🎮"),
-        .other:         TypeDisplayRepresentation(name: "其他（运行时输入）"),
+    static var caseDisplayRepresentations: [Self: DisplayRepresentation] = [
+        .food:          DisplayRepresentation(title: "餐饮 🍜"),
+        .transport:     DisplayRepresentation(title: "交通 🚌"),
+        .shopping:      DisplayRepresentation(title: "购物 🛍️"),
+        .entertainment: DisplayRepresentation(title: "娱乐 🎮"),
+        .other:         DisplayRepresentation(title: "其他（运行时输入）"),
     ]
 }
 
