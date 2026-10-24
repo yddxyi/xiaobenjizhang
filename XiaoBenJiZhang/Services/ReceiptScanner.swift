@@ -17,6 +17,7 @@ struct ReceiptInfo {
 /// 小票识别器：截图 → 文字 → 金额 / 时间 / 分类
 ///
 /// 全部在手机本地用 Apple 的 Vision 框架完成，不上传网络。
+/// 解析规则与 tools/test_parser.py 保持一致（该脚本用于在 PC 上做算法回归测试）。
 enum ReceiptScanner {
 
     static let logger = Logger(subsystem: "com.xiaobenjizhang.app", category: "ocr")
@@ -61,71 +62,122 @@ enum ReceiptScanner {
             throw ScanError(message: "图片里没有识别到文字，请确认是账单截图")
         }
 
+        // 解析前先归一化（全角转半角），提升各种 App 截图的兼容性
+        let normalized = normalize(text)
+
         return ReceiptInfo(
-            amount: parseAmount(in: text),
-            spentAt: parseDate(in: text),
-            category: ExpenseCategory.guess(from: text),
+            amount: parseAmount(in: normalized),
+            spentAt: parseDate(in: normalized),
+            category: ExpenseCategory.guess(from: normalized),
             rawText: text
         )
     }
 
+    /// 全角字符 → 半角（OCR 常见：１２８．００ → 128.00）
+    private static func normalize(_ text: String) -> String {
+        String(text.map { ch -> Character in
+            guard let scalar = ch.unicodeScalars.first else { return ch }
+            let value = scalar.value
+            // 全角数字 ０-９（0xFF10-0xFF19）→ 半角
+            if (0xFF10...0xFF19).contains(value), let half = Unicode.Scalar(value - 0xFEE0) {
+                return Character(half)
+            }
+            switch scalar {
+            case "．": return "."     // 全角句号 → 小数点
+            case "／": return "/"     // 全角斜杠
+            case "－": return "-"     // 全角连字符
+            default:  return ch
+            }
+        })
+    }
+
     // MARK: - 金额解析
 
-    /// 从文字里解析消费金额（规则见 README「识别规则说明」）
+    /// 金额候选的选择策略
+    private enum PickStrategy {
+        case last   // 取最后一条（"实付"通常在账单靠下）
+        case max    // 取最大（总价一般是最大的那个数字）
+    }
+
+    /// ① 关键词规则。注意 `(?!时间|日期|…)` 这个"守卫"：
+    /// 像"付款时间 2026-10-24"里的"付款"后面跟的是时间标签，
+    /// 没有守卫的话 2026 会被当成金额——这是最常见的"金额识别成日期"的原因。
+    private static let keywordPattern =
+        #"(?:实付|实收款?|合计|总计|小计|应付|待付款?|付款|收款|金额|支付)(?!时间|日期|单号|订单|流水|号码|方式|工具|账户)[^0-9¥￥$\n]{0,8}[¥￥$]?\s*([0-9]{1,9}(?:[,，][0-9]{3})*(?:\.[0-9]{1,2})?)"#
+
+    /// ② 货币符号规则：¥ ￥ $ 后面的数字
+    private static let symbolPattern =
+        #"[¥￥$]\s*([0-9]{1,9}(?:[,，][0-9]{3})*(?:\.[0-9]{1,2})?)"#
+
+    /// ③ "12.50 元"写法
+    private static let yuanPattern =
+        #"([0-9]{1,9}(?:[,，][0-9]{3})*(?:\.[0-9]{1,2}))\s*元"#
+
+    /// ④ 兜底：孤立的两位小数数字。
+    /// 很多截图裁剪后只剩一个"大字金额"，没有 ¥ 也没有文字标签，靠这条兜住。
+    private static let bareNumberPattern =
+        #"(?<![0-9.])([0-9]{1,7}\.[0-9]{2})(?![0-9%‰年月日时])"#
+
+    /// 从文字里解析消费金额（规则顺序即优先级）
     static func parseAmount(in text: String) -> Double? {
-        // ① 关键词优先：实付 / 合计 / 总计 / 金额… 后面跟的数字最可能是真实付款金额
-        let keywordPattern = #"(?:实付|实收款?|合计|总计|应付|待付款?|收款|金额|支付)[^0-9¥￥$\n]{0,6}[¥￥$]?\s*([0-9]{1,9}(?:[,，][0-9]{3})*(?:\.[0-9]{1,2})?)"#
-        if let amount = lastValidAmount(pattern: keywordPattern, in: text) {
+        if let amount = pickAmount(pattern: keywordPattern, in: text, strategy: .last) {
             return amount
         }
-
-        // ② 找不到关键词，就取带货币符号的数字里最大的那个
-        let symbolPattern = #"[¥￥$]\s*([0-9]{1,9}(?:[,，][0-9]{3})*(?:\.[0-9]{1,2})?)"#
-        if let amount = maxValidAmount(pattern: symbolPattern, in: text) {
+        if let amount = pickAmount(pattern: symbolPattern, in: text, strategy: .max) {
             return amount
         }
-
-        // ③ 再找 "12.50 元" 这种写法，取最大
-        let yuanPattern = #"([0-9]{1,9}(?:[,，][0-9]{3})*(?:\.[0-9]{1,2}))\s*元"#
-        if let amount = maxValidAmount(pattern: yuanPattern, in: text) {
+        if let amount = pickAmount(pattern: yuanPattern, in: text, strategy: .max) {
             return amount
         }
-
+        if let amount = pickAmount(pattern: bareNumberPattern, in: text, strategy: .max) {
+            return amount
+        }
         return nil
     }
 
-    /// 取「最后一个合理」的匹配金额（实付一般在账单靠下的位置）
-    private static func lastValidAmount(pattern: String, in text: String) -> Double? {
-        validAmounts(pattern: pattern, in: text).last
+    /// 按正则收集所有合法金额，再按策略挑选
+    private static func pickAmount(pattern: String, in text: String, strategy: PickStrategy) -> Double? {
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+        let candidates = validAmounts(regex: regex, in: text)
+        switch strategy {
+        case .last: return candidates.last
+        case .max:  return candidates.max()
+        }
     }
 
-    /// 取「最大」的合理匹配金额
-    private static func maxValidAmount(pattern: String, in text: String) -> Double? {
-        validAmounts(pattern: pattern, in: text).max()
-    }
-
-    /// 按正则找出所有金额并过滤异常值（≤0 或超过上限的丢弃，比如订单号）
-    private static func validAmounts(pattern: String, in text: String) -> [Double] {
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
-        let range = NSRange(text.startIndex..., in: text)
-
+    /// 按正则找出所有金额并过滤异常值（≤0、超过上限的丢弃，比如订单号）
+    private static func validAmounts(regex: NSRegularExpression, in text: String) -> [Double] {
         var results: [Double] = []
-        for match in regex.matches(in: text, range: range) {
+        for match in regex.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
             // 第 1 个捕获组是数字本体；取不到就跳过这一条
             guard match.numberOfRanges > 1,
                   let captured = Range(match.range(at: 1), in: text) else { continue }
-            // Range 只是"区间"，要先用下标取出子串、转成 String，才能调用字符串方法
             let capturedText = String(text[captured])
+
+            // "2026"这种后面紧跟日期分隔符的是日期片段，跳过（防止把日期当金额）
+            if isDateFragment(capturedText, followedByCharAt: captured.upperBound, in: text) {
+                continue
+            }
+
             // 去掉千位分隔符（1,234.56 → 1234.56）
             let cleaned = capturedText
                 .replacingOccurrences(of: ",", with: "")
                 .replacingOccurrences(of: "，", with: "")
-            // ≤0 或超过上限的数字（比如订单号）丢弃
             if let value = Double(cleaned), value > 0, value < maxReasonableAmount {
                 results.append(value)
             }
         }
         return results
+    }
+
+    /// 判断一个数字是不是日期的一部分：4 位年份（19xx/20xx）后面紧跟 年 - . /
+    private static func isDateFragment(_ number: String, followedByCharAt end: String.Index, in text: String) -> Bool {
+        guard number.count == 4,
+              number.hasPrefix("19") || number.hasPrefix("20"),
+              Int(number) != nil,
+              end < text.endIndex else { return false }
+        let next = text[end]
+        return next == "年" || next == "-" || next == "." || next == "/"
     }
 
     // MARK: - 时间解析
@@ -136,18 +188,25 @@ enum ReceiptScanner {
 
     /// 不带年份的日期 + 时间：`10-24 20:15`、`10月24日 08:05`（年份按今年补齐）
     private static let shortDatePattern =
-        #"(?<![0-9])(1[0-2]|0?[1-9])[月/-](3[01]|[12][0-9]|0?[1-9])日?\s+([01]?[0-9]|2[0-3])[:：]([0-5][0-9])(?![0-9])"#
+        #"(?<![0-9])(1[0-2]|0?[1-9])[月/-](3[01]|[12][0-9]|0?[1-9])日?\s*([01]?[0-9]|2[0-3])[:：]([0-5][0-9])(?![0-9])"#
 
-    /// 从文字里解析消费时间
+    /// 从文字里解析消费时间。
+    /// 优先在包含"时间/日期"字样的行里找（最可靠，不会被订单号等干扰），
+    /// 找不到再退回全文搜索。
     static func parseDate(in text: String) -> Date? {
-        // ① 先找带年份的完整日期
-        if let date = firstDate(pattern: fullDatePattern, in: text, defaultYear: nil) {
-            return date
-        }
-        // ② 再找不带年份的（比如旧账单上的 12 月，会自动按"去年 12 月"处理）
-        let thisYear = Calendar.current.component(.year, from: .now)
-        if let date = firstDate(pattern: shortDatePattern, in: text, defaultYear: thisYear) {
-            return date
+        let priorityLines = text
+            .components(separatedBy: "\n")
+            .filter { $0.contains("时间") || $0.contains("日期") }
+        let priorityText = priorityLines.joined(separator: "\n")
+
+        for scope in [priorityText, text] where !scope.isEmpty {
+            if let date = firstDate(pattern: fullDatePattern, in: scope, defaultYear: nil) {
+                return date
+            }
+            let thisYear = Calendar.current.component(.year, from: .now)
+            if let date = firstDate(pattern: shortDatePattern, in: scope, defaultYear: thisYear) {
+                return date
+            }
         }
         return nil
     }
@@ -201,6 +260,10 @@ enum ReceiptScanner {
             if defaultYear != nil, date.timeIntervalSince(now) > 86_400,
                let lastYear = calendar.date(byAdding: .year, value: -1, to: date) {
                 return lastYear
+            }
+            // 带年份但比现在晚超过 1 天的，多半是误识别，跳过找下一个
+            if defaultYear == nil && date.timeIntervalSince(now) > 86_400 {
+                continue
             }
             return date
         }
