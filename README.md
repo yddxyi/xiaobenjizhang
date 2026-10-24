@@ -121,9 +121,15 @@ xbjz/
 
 每次 push 代码到 GitHub，云端 Mac 会自动完成：
 
+**Build（验证编译）**
 1. 安装 XcodeGen 并从 `project.yml` 生成 Xcode 工程
 2. 用 Xcode 26 / iOS 26 SDK 编译 App（液态玻璃代码在这里验证能否编译通过）
 3. 把编译好的模拟器版 `.app` 打包成构建产物（Artifacts），可在 Actions 页面下载
+
+**Build IPA（真机安装包，供 p12 自签）**
+1. 编译**真机版（arm64）Release** 包
+2. 打包成**未签名 IPA**（`XiaoBenJiZhang-unsigned-ipa`）
+3. 下载后用爱思助手 / Sideloadly 配合自己的 **p12 + 描述文件**签名安装（无 Mac 方案，步骤见 [使用指南.md](./使用指南.md)）
 
 **本地一行命令触发**：push 之后到仓库的 **Actions** 标签页看进度；绿色 ✓ = 构建成功，红色 ✗ 点进去能看到报错。
 
