@@ -114,8 +114,10 @@ enum ReceiptScanner {
             // 第 1 个捕获组是数字本体；取不到就跳过这一条
             guard match.numberOfRanges > 1,
                   let captured = Range(match.range(at: 1), in: text) else { continue }
+            // Range 只是"区间"，要先用下标取出子串、转成 String，才能调用字符串方法
+            let capturedText = String(text[captured])
             // 去掉千位分隔符（1,234.56 → 1234.56）
-            let cleaned = captured
+            let cleaned = capturedText
                 .replacingOccurrences(of: ",", with: "")
                 .replacingOccurrences(of: "，", with: "")
             // ≤0 或超过上限的数字（比如订单号）丢弃
