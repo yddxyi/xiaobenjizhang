@@ -146,14 +146,14 @@ struct WeekSummaryCard: View {
         }
         .padding(Design.cardPadding)
         // iOS 26 液态玻璃（Liquid Glass）：卡片不再是死板的渐变背景，
-        // 而是一块染上暖橙 tint 的"实时玻璃"，会随底下滚动的内容
+        // 而是一块染上主题色 tint 的"实时玻璃"，会随底下滚动的内容
         // 产生折射和高光流动；.interactive() 让按压时有玻璃的物理反馈
         .glassEffect(
-            .regular.tint(Design.warmTint).interactive(),
+            .regular.tint(Design.accentTint).interactive(),
             in: RoundedRectangle(cornerRadius: Design.cornerRadius, style: .continuous)
         )
-        // 玻璃上的白色文字加一层轻微投影，保证任何背景下都清晰可读
-        .shadow(color: .black.opacity(0.18), radius: 1.5, y: 1)
+        // 玻璃上的白色文字加一层投影，保证任何背景下都清晰可读
+        .shadow(color: .black.opacity(0.25), radius: 1.5, y: 1)
     }
 
     /// 柱子的高度：按当天金额 / 本周最大金额 的比例缩放

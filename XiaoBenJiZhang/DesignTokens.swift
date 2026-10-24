@@ -15,8 +15,10 @@ enum Design {
     static let cardPadding: CGFloat = 20
     /// 列表行内元素的统一间距
     static let rowSpacing: CGFloat = 12
-    /// 全局主色（暖橙）
-    static let accent = Color.orange
-    /// 本周消费卡片的玻璃 tint（暖橙偏红，保证白字在任何背景下都清晰）
-    static let warmTint = Color(red: 1.0, green: 0.42, blue: 0.14)
+
+    /// 全局主题色：#43B6E4（清新蓝）
+    static let accent = Color(red: 67 / 255.0, green: 182 / 255.0, blue: 228 / 255.0)
+
+    /// 本周消费卡片的玻璃 tint：主题色稍加深一点，保证白字在任何背景下都清晰
+    static let accentTint = Color(red: 41 / 255.0, green: 158 / 255.0, blue: 212 / 255.0)
 }

@@ -53,4 +53,29 @@ final class ExpenseRecord {
         get { ExpenseCategory(rawValue: categoryRaw) ?? .other }
         set { categoryRaw = newValue.rawValue }
     }
+
+    /// 显示用的分类名：内置分类显示中文名；自定义分类（categoryRaw 存的是名字本身）直接显示文字
+    var categoryTitle: String {
+        if let builtIn = ExpenseCategory(rawValue: categoryRaw) {
+            return builtIn.title
+        }
+        return categoryRaw.isEmpty ? "其他" : categoryRaw
+    }
+
+    /// 显示用的分类 emoji：自定义分类统一用 🏷️
+    var categoryEmoji: String {
+        ExpenseCategory(rawValue: categoryRaw)?.emoji ?? "🏷️"
+    }
+
+    /// 自定义分类名的读写（只在分类为「其他」时使用）。
+    /// 输入名字 → categoryRaw 直接存这个名字；清空 → 回到内置「其他」。
+    var customCategoryName: String {
+        get {
+            ExpenseCategory(rawValue: categoryRaw) == nil ? categoryRaw : ""
+        }
+        set {
+            let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            categoryRaw = trimmed.isEmpty ? ExpenseCategory.other.rawValue : trimmed
+        }
+    }
 }

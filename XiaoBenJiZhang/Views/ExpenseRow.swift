@@ -10,10 +10,10 @@ struct ExpenseRow: View {
             thumbnail
 
             VStack(alignment: .leading, spacing: 4) {
-                Text(record.note.isEmpty ? record.category.title : record.note)
+                Text(record.note.isEmpty ? record.categoryTitle : record.note)
                     .font(.body.weight(.medium))
                     .lineLimit(1)
-                Text("\(record.category.emoji) \(record.category.title) · \(record.spentAt.formatted(.dateTime.hour().minute()))")
+                Text("\(record.categoryEmoji) \(record.categoryTitle) · \(record.spentAt.formatted(.dateTime.hour().minute()))")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -36,9 +36,9 @@ struct ExpenseRow: View {
                 .resizable()
                 .scaledToFill()
                 .frame(width: 46, height: 46)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .clipShape(RoundedRectangle(cornerRadius: Design.smallRadius, style: .continuous))
         } else {
-            Text(record.category.emoji)
+            Text(record.categoryEmoji)
                 .font(.title3)
                 .frame(width: 46, height: 46)
                 // 液态玻璃小方块（和 App 其他玻璃元素同一套视觉规范）

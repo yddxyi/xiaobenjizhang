@@ -14,8 +14,8 @@ struct XiaoBenJiZhangApp: App {
     var body: some Scene {
         WindowGroup {
             HomeView()
-                // 全局主题色：暖橙色，符合"记账/钱包"的氛围
-                .tint(.orange)
+                // 全局主题色：#43B6E4 清新蓝（统一取自 DesignTokens）
+                .tint(Design.accent)
         }
         .modelContainer(container)
     }

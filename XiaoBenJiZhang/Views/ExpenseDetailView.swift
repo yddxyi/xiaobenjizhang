@@ -50,6 +50,11 @@ struct ExpenseDetailView: View {
                     }
                 }
                 .pickerStyle(.menu)
+
+                // 选「其他」时可以填一个自定义分类名（比如"剧本杀"），留空就是普通"其他"
+                if record.category == .other {
+                    TextField("自定义分类名（可留空）", text: $record.customCategoryName)
+                }
             }
 
             Section("消费时间") {

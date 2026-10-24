@@ -22,6 +22,8 @@ final class AddExpenseViewModel: ObservableObject {
     @Published var note = ""
     /// 选中的分类
     @Published var category: ExpenseCategory = .other
+    /// 自定义分类名（只在分类选「其他」时使用，留空则为普通"其他"）
+    @Published var customCategoryName = ""
 
     // MARK: - 识别状态
 
@@ -128,6 +130,11 @@ final class AddExpenseViewModel: ObservableObject {
             category: category,
             thumbnail: thumbnailData
         )
+        // 「其他」+ 填了自定义名字 → categoryRaw 直接存名字
+        let customName = customCategoryName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if category == .other, !customName.isEmpty {
+            record.categoryRaw = customName
+        }
         context.insert(record)
         try context.save()
     }

@@ -1,12 +1,31 @@
 import AppIntents
-import UniformTypeIdentifiers
 import SwiftData
 import os
+
+/// 快捷指令里可选的分类选项（和 App 内置的 4 + 其他 保持一致）
+enum ReceiptCategoryOption: String, CaseIterable, AppEnum {
+    case food          // 餐饮
+    case transport     // 交通
+    case shopping      // 购物
+    case entertainment // 娱乐
+    case other         // 其他（自定义）
+
+    static var typeDisplayRepresentation = TypeDisplayRepresentation(name: "分类")
+
+    static var caseDisplayRepresentations: [Self: TypeDisplayRepresentation] = [
+        .food:          TypeDisplayRepresentation(name: "餐饮 🍜"),
+        .transport:     TypeDisplayRepresentation(name: "交通 🚌"),
+        .shopping:      TypeDisplayRepresentation(name: "购物 🛍️"),
+        .entertainment: TypeDisplayRepresentation(name: "娱乐 🎮"),
+        .other:         TypeDisplayRepresentation(name: "其他（运行时输入）"),
+    ]
+}
 
 /// 快捷指令动作：识别小票并记账
 ///
 /// 在「快捷指令」App 里搜索"识别小票并记账"（或"小本记账"）即可找到。
-/// 传入一张消费截图 → 本地 OCR 识别 → 自动存入账本。
+/// 传入一张消费截图 → 本地 OCR 识别 → 自动存入账本；
+/// 可以不选分类（自动识别），选了「其他」会在运行时追问自定义分类名。
 struct AddExpenseFromImageIntent: AppIntent {
 
     static let logger = Logger(subsystem: "com.xiaobenjizhang.app", category: "intent")
@@ -15,7 +34,7 @@ struct AddExpenseFromImageIntent: AppIntent {
 
     static var title: LocalizedStringResource = "识别小票并记账"
     static var description = IntentDescription(
-        "传入一张消费截图（微信/支付宝账单等），自动识别金额和消费时间，保存截图缩略图"
+        "传入一张消费截图（微信/支付宝账单等），自动识别金额和消费时间，保存截图缩略图。分类可以不选（自动识别），选「其他」会要求输入自定义分类名"
     )
 
     /// 记完账不需要打开 App，直接在快捷指令里显示结果
@@ -29,8 +48,17 @@ struct AddExpenseFromImageIntent: AppIntent {
     @Parameter(title: "消费截图", supportedTypeIdentifiers: ["public.image"])
     var image: IntentFile
 
+    /// 可选的分类：不选 = 根据 OCR 文字自动识别
+    @Parameter(title: "分类")
+    var category: ReceiptCategoryOption?
+
+    /// 自定义分类名：分类选「其他」时使用。
+    /// 没提前填的话，运行时会弹窗追问（requestInput）。
+    @Parameter(title: "自定义分类名", default: "")
+    var customCategoryName: String
+
     static var parameterSummary: some ParameterSummary {
-        Summary("识别 \(\.$image) 并记账")
+        Summary("识别 \(\.$image) 并记账，分类 \(\.$category)")
     }
 
     // MARK: - 执行
@@ -39,7 +67,7 @@ struct AddExpenseFromImageIntent: AppIntent {
     func perform() async throws -> some IntentResult & ProvidesDialog {
         let data = image.data
 
-        // 1. 本地 OCR 识别（金额、时间、分类）
+        // 1. 本地 OCR 识别（金额、时间）
         let info: ReceiptInfo
         do {
             info = try await ReceiptScanner.scan(imageData: data)
@@ -53,15 +81,35 @@ struct AddExpenseFromImageIntent: AppIntent {
             throw IntentError(message: "没有识别到金额，请打开小本记账 App 手动记这一笔")
         }
 
-        // 3. 生成缩略图并保存进数据库
+        // 3. 确定分类（存进 categoryRaw：内置分类存 rawValue，自定义直接存名字）
+        let categoryRaw: String
+        if let picked = category {
+            if picked == .other {
+                let typed = customCategoryName.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !typed.isEmpty {
+                    categoryRaw = typed
+                } else {
+                    // 选了「其他」但没填名字 → 运行时弹窗追问
+                    categoryRaw = try await $customCategoryName.requestInput("其他分类的名字叫什么？")
+                }
+            } else {
+                categoryRaw = picked.rawValue
+            }
+        } else {
+            // 没选分类 → 根据账单文字自动猜
+            categoryRaw = ExpenseCategory.guess(from: info.rawText).rawValue
+        }
+
+        // 4. 生成缩略图（原图最长边的 1/4）并保存进数据库
         let thumbnail = ThumbnailGenerator.thumbnail(from: data)
         let record = ExpenseRecord(
             amount: amount,
             spentAt: info.spentAt ?? .now,
             note: "",
-            category: info.category,
+            category: .other,
             thumbnail: thumbnail
         )
+        record.categoryRaw = categoryRaw
 
         let context = AppModelContainer.newContext()
         context.insert(record)
@@ -72,10 +120,14 @@ struct AddExpenseFromImageIntent: AppIntent {
             throw IntentError(message: "保存失败了，请再试一次")
         }
 
-        let formatted = String(format: "%.2f", amount)
-        Self.logger.info("快捷指令记账成功：¥\(formatted, privacy: .public)")
+        // 5. 用友好的名字播报结果（内置分类显示中文名，自定义显示名字本身）
+        let displayCategory = ExpenseCategory(rawValue: categoryRaw)?.title ?? categoryRaw
+        let displayEmoji = ExpenseCategory(rawValue: categoryRaw)?.emoji ?? "🏷️"
 
-        return .result(dialog: "记账成功！\(info.category.emoji) \(info.category.title) ¥\(formatted)")
+        let formatted = String(format: "%.2f", amount)
+        Self.logger.info("快捷指令记账成功：\(displayCategory, privacy: .public) ¥\(formatted, privacy: .public)")
+
+        return .result(dialog: "记账成功！\(displayEmoji) \(displayCategory) ¥\(formatted)")
     }
 }
 

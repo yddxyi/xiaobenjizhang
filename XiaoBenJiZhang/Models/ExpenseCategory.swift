@@ -2,17 +2,15 @@ import Foundation
 
 /// 消费分类
 ///
-/// 每个分类有：数据库用的 rawValue、中文名、emoji 图标。
-/// `guess(from:)` 会根据小票上的文字猜出最可能的分类。
+/// v2 起精简为 5 类：餐饮、交通、购物、娱乐、其他。
+/// 「其他」支持自定义分类名（直接把名字存进 categoryRaw），
+/// 显示时如果不是内置分类的 rawValue，就当成自定义名字展示。
 enum ExpenseCategory: String, CaseIterable, Codable, Identifiable {
     case food          // 餐饮
     case transport     // 交通
     case shopping      // 购物
     case entertainment // 娱乐
-    case household     // 居家
-    case medical       // 医疗
-    case education     // 教育
-    case other         // 其他
+    case other         // 其他（可自定义名称）
 
     var id: String { rawValue }
 
@@ -23,9 +21,6 @@ enum ExpenseCategory: String, CaseIterable, Codable, Identifiable {
         case .transport:     "交通"
         case .shopping:      "购物"
         case .entertainment: "娱乐"
-        case .household:     "居家"
-        case .medical:       "医疗"
-        case .education:     "教育"
         case .other:         "其他"
         }
     }
@@ -37,9 +32,6 @@ enum ExpenseCategory: String, CaseIterable, Codable, Identifiable {
         case .transport:     "🚌"
         case .shopping:      "🛍️"
         case .entertainment: "🎮"
-        case .household:     "🏠"
-        case .medical:       "💊"
-        case .education:     "📚"
         case .other:         "📦"
         }
     }
@@ -57,10 +49,6 @@ enum ExpenseCategory: String, CaseIterable, Codable, Identifiable {
                            "苏宁", "得物", "服装", "数码"]),
         (.entertainment, ["电影", "游戏", "KTV", "演唱会", "视频会员", "腾讯视频", "爱奇艺", "哔哩哔哩",
                            "网易云音乐", "抖音", "游乐", "密室", "剧本杀"]),
-        (.household,     ["水费", "电费", "燃气", "物业", "房租", "宽带", "话费", "中国移动",
-                           "中国联通", "中国电信"]),
-        (.medical,       ["医院", "药店", "药品", "门诊", "挂号", "药房"]),
-        (.education,     ["学费", "书店", "图书", "课程", "培训", "考试", "文具", "教育"]),
     ]
 
     /// 猜测分类：文字里命中哪个关键词就归哪类，都没命中返回「其他」
