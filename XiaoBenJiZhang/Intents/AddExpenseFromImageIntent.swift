@@ -44,7 +44,7 @@ struct AddExpenseFromImageIntent: AppIntent {
         do {
             info = try await ReceiptScanner.scan(imageData: data)
         } catch {
-            logger.error("OCR 识别失败: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("OCR 识别失败: \(error.localizedDescription, privacy: .public)")
             throw IntentError(message: "图片识别失败，请换一张更清晰的账单截图试试")
         }
 
@@ -68,11 +68,11 @@ struct AddExpenseFromImageIntent: AppIntent {
         do {
             try context.save()
         } catch {
-            logger.error("数据库保存失败: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("数据库保存失败: \(error.localizedDescription, privacy: .public)")
             throw IntentError(message: "保存失败了，请再试一次")
         }
 
-        logger.info("快捷指令记账成功：¥\(amount, format: .fixedPrecision(2))")
+        Self.logger.info("快捷指令记账成功：¥\(amount, format: .precision(2))")
 
         let formatted = String(format: "%.2f", amount)
         return .result(dialog: "记账成功！\(info.category.emoji) \(info.category.title) ¥\(formatted)")
