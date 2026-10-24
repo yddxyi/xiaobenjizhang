@@ -89,8 +89,8 @@ struct AddExpenseFromImageIntent: AppIntent {
                 if !typed.isEmpty {
                     categoryRaw = typed
                 } else {
-                    // 选了「其他」但没填名字 → 运行时弹窗追问
-                    categoryRaw = try await $customCategoryName.requestInput("其他分类的名字叫什么？")
+                    // 选了「其他」但没填名字 → 运行时弹窗追问（requestValue 是 App Intents 的参数追问 API）
+                    categoryRaw = try await $customCategoryName.requestValue("其他分类的名字叫什么？")
                 }
             } else {
                 categoryRaw = picked.rawValue
