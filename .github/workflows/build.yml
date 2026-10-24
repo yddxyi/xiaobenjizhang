@@ -1,0 +1,50 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build iOS App
+    # macos-26 镜像自带 Xcode 26（含 iOS 26 SDK，支持液态玻璃 API）
+    runs-on: macos-26
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Show tool versions
+        run: |
+          xcodebuild -version
+          xcrun simctl list runtimes | head -5 || true
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build (iOS Simulator)
+        run: |
+          xcodebuild \
+            -project XiaoBenJiZhang.xcodeproj \
+            -scheme XiaoBenJiZhang \
+            -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            build
+
+      - name: Package app
+        run: |
+          cd "build/Build/Products/Debug-iphonesimulator"
+          zip -qry "$GITHUB_WORKSPACE/XiaoBenJiZhang-simulator.app.zip" XiaoBenJiZhang.app
+
+      - name: Upload app artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: XiaoBenJiZhang-simulator-app
+          path: XiaoBenJiZhang-simulator.app.zip
