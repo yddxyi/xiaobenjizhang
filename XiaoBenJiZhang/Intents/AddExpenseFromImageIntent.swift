@@ -72,9 +72,9 @@ struct AddExpenseFromImageIntent: AppIntent {
             throw IntentError(message: "保存失败了，请再试一次")
         }
 
-        Self.logger.info("快捷指令记账成功：¥\(amount, format: .precision(2))")
-
         let formatted = String(format: "%.2f", amount)
+        Self.logger.info("快捷指令记账成功：¥\(formatted, privacy: .public)")
+
         return .result(dialog: "记账成功！\(info.category.emoji) \(info.category.title) ¥\(formatted)")
     }
 }
