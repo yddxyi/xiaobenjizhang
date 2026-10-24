@@ -108,18 +108,22 @@ enum ReceiptScanner {
     private static func validAmounts(pattern: String, in text: String) -> [Double] {
         guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
         let range = NSRange(text.startIndex..., in: text)
-        return regex.matches(in: text, range: range).compactMap { match in
+
+        var results: [Double] = []
+        for match in regex.matches(in: text, range: range) {
+            // 第 1 个捕获组是数字本体；取不到就跳过这一条
             guard match.numberOfRanges > 1,
-                  let captured = Range(match.range(at: 1), in: text) else { return nil }
+                  let captured = Range(match.range(at: 1), in: text) else { continue }
             // 去掉千位分隔符（1,234.56 → 1234.56）
             let cleaned = captured
                 .replacingOccurrences(of: ",", with: "")
                 .replacingOccurrences(of: "，", with: "")
-            guard let value = Double(cleaned),
-                  value > 0,
-                  value < maxReasonableAmount else { return nil }
-            return value
+            // ≤0 或超过上限的数字（比如订单号）丢弃
+            if let value = Double(cleaned), value > 0, value < maxReasonableAmount {
+                results.append(value)
+            }
         }
+        return results
     }
 
     // MARK: - 时间解析
@@ -164,7 +168,8 @@ enum ReceiptScanner {
             guard group > 0,
                   group < match.numberOfRanges,
                   let range = Range(match.range(at: group), in: text) else { return nil }
-            return Int(range)
+            // 先用 Range 取出子串，再转成整数（转不成返回 nil）
+            return Int(text[range])
         }
 
         for match in regex.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
