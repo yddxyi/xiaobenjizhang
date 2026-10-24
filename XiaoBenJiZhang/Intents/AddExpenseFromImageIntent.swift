@@ -23,8 +23,10 @@ struct AddExpenseFromImageIntent: AppIntent {
 
     // MARK: - 参数
 
-    /// 传入的图片（快捷指令里可以接到"共享表单的图片"或"选择照片"的输出上）
-    @Parameter(title: "消费截图", supportedTypeIdentifiers: [UTType.image.identifier])
+    /// 传入的图片（快捷指令里可以接到"共享表单的图片"或"选择照片"的输出上）。
+    /// 注意：@Parameter 宏只接受编译期常量，所以要写字面量 "public.image"
+    /// （它是 UTType.image.identifier 的固定值，表示所有图片类型）
+    @Parameter(title: "消费截图", supportedTypeIdentifiers: ["public.image"])
     var image: IntentFile
 
     static var parameterSummary: some ParameterSummary {
