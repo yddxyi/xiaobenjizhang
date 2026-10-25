@@ -16,6 +16,8 @@ struct XiaoBenJiZhangApp: App {
             HomeView()
                 // 全局主题色：#43B6E4 清新蓝（统一取自 DesignTokens）
                 .tint(Design.accent)
+                // 全部界面固定简体中文（日期选择器、系统控件等）
+                .environment(\.locale, Formatters.zhCN)
         }
         .modelContainer(container)
     }

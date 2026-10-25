@@ -22,3 +22,26 @@ enum Design {
     /// 本周消费卡片的玻璃 tint：主题色稍加深一点，保证白字在任何背景下都清晰
     static let accentTint = Color(red: 41 / 255.0, green: 158 / 255.0, blue: 212 / 255.0)
 }
+
+/// 全局中文格式化器
+///
+/// 无论系统语言设置是什么，App 里所有日期时间一律显示简体中文。
+enum Formatters {
+    /// 固定简体中文（中国内地）区域设置
+    static let zhCN = Locale(identifier: "zh_CN")
+
+    /// 时刻：14:30
+    static func time(_ date: Date) -> String {
+        date.formatted(.dateTime.hour().minute().locale(zhCN))
+    }
+
+    /// 月日：10月24日
+    static func monthDay(_ date: Date) -> String {
+        date.formatted(.dateTime.month().day().locale(zhCN))
+    }
+
+    /// 完整日期：2026年10月24日
+    static func fullDate(_ date: Date) -> String {
+        date.formatted(.dateTime.year().month().day().locale(zhCN))
+    }
+}

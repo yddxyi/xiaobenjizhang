@@ -45,7 +45,9 @@ enum ReceiptScanner {
         let lines: [String] = try await Task.detached(priority: .userInitiated) {
             let request = VNRecognizeTextRequest()
             request.recognitionLevel = .accurate          // 精准模式，小票数字更可靠
-            request.usesLanguageCorrection = true         // 打开语言修正
+            // 注意：语言修正（usesLanguageCorrection）依赖的语言模型可能触发系统按需下载、
+            // 弹出联网权限。为了"零联网"这里保持关闭，代价是潦草字迹的纠错弱一点。
+            request.usesLanguageCorrection = false
             request.recognitionLanguages = ["zh-Hans", "zh-Hant", "en-US"]
 
             // 用 Data 直接构建，Vision 会自动处理图片方向（横拍竖拍都正确）

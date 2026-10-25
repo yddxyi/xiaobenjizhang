@@ -2,7 +2,10 @@ import SwiftUI
 import SwiftData
 import os
 
-/// App 主页：顶部「本周消费」汇总卡片，下方按天分组的账单明细（全部记录）
+/// App 主页：顶部「本周消费」汇总卡片，下方按天分组的账单明细（全部记录）。
+///
+/// 批量删除：长按任意条目进入选择模式 → 点选多条 → 右上角「删除」。
+/// 单条删除：非选择模式下左滑条目即可。
 struct HomeView: View {
 
     /// 自动查询数据库里所有账单（按消费时间倒序，数据库一变界面自动刷新）
@@ -10,13 +13,19 @@ struct HomeView: View {
     private var records: [ExpenseRecord]
 
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.editMode) private var editMode
+
     @State private var showAddSheet = false
+    /// 批量选择模式下勾选中的账单
+    @State private var selectedIDs = Set<PersistentIdentifier>()
+
+    private var isEditing: Bool { editMode?.wrappedValue == .active }
 
     private static let logger = Logger(subsystem: "com.xiaobenjizhang.app", category: "home")
 
     var body: some View {
         NavigationStack {
-            List {
+            List(selection: $selectedIDs) {
                 // ① 顶部：本周消费汇总卡片
                 Section {
                     WeekSummaryCard(records: records)
@@ -41,6 +50,12 @@ struct HomeView: View {
                                     ExpenseDetailView(record: record)
                                 } label: {
                                     ExpenseRow(record: record)
+                                        // 长按 0.5 秒进入批量选择模式
+                                        .simultaneousGesture(
+                                            LongPressGesture(minimumDuration: 0.5).onEnded { _ in
+                                                withAnimation { editMode?.wrappedValue = .active }
+                                            }
+                                        )
                                 }
                             }
                             .onDelete { offsets in
@@ -54,15 +69,31 @@ struct HomeView: View {
                 }
             }
             .listStyle(.insetGrouped)
-            .navigationTitle("小本记账")
+            .navigationTitle("小八记账")
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        showAddSheet = true
-                    } label: {
-                        Image(systemName: "plus.circle.fill").font(.title3)
+                // 选择模式下：左上角「完成」退出
+                ToolbarItem(placement: .topBarLeading) {
+                    if isEditing {
+                        Button("完成") { exitEditing() }
                     }
-                    .accessibilityLabel("记一笔")
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    if isEditing {
+                        // 批量删除按钮（显示已选数量）
+                        Button(role: .destructive) {
+                            deleteSelected()
+                        } label: {
+                            Label("删除（\(selectedIDs.count)）", systemImage: "trash")
+                        }
+                        .disabled(selectedIDs.isEmpty)
+                    } else {
+                        Button {
+                            showAddSheet = true
+                        } label: {
+                            Image(systemName: "plus.circle.fill").font(.title3)
+                        }
+                        .accessibilityLabel("记一笔")
+                    }
                 }
             }
             .sheet(isPresented: $showAddSheet) {
@@ -86,6 +117,27 @@ struct HomeView: View {
 
     // MARK: - 操作
 
+    /// 退出批量选择模式并清空选择
+    private func exitEditing() {
+        selectedIDs.removeAll()
+        withAnimation { editMode?.wrappedValue = .inactive }
+    }
+
+    /// 删除所有勾选中的账单
+    private func deleteSelected() {
+        let doomed = records.filter { selectedIDs.contains($0.id) }
+        guard !doomed.isEmpty else { return }
+        do {
+            for record in doomed {
+                modelContext.delete(record)
+            }
+            try modelContext.save()
+        } catch {
+            Self.logger.error("批量删除失败: \(error.localizedDescription, privacy: .public)")
+        }
+        exitEditing()
+    }
+
     private func deleteRecords(at offsets: IndexSet, in group: [ExpenseRecord]) {
         do {
             for index in offsets {
@@ -108,9 +160,8 @@ struct HomeView: View {
         } else {
             dayName = Self.weekdaySymbols[calendar.component(.weekday, from: date) - 1]
         }
-        let dateText = date.formatted(.dateTime.month().day())
         let totalText = total.formatted(.number.precision(.fractionLength(2)))
-        return "\(dayName) · \(dateText) · ¥\(totalText)"
+        return "\(dayName) · \(Formatters.monthDay(date)) · ¥\(totalText)"
     }
 
     private static let weekdaySymbols = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"]
