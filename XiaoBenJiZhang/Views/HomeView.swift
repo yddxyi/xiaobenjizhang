@@ -33,7 +33,17 @@ struct HomeView: View {
     var body: some View {
         NavigationStack {
             List(selection: $selectedIDs) {
-                // ① 顶部：周消费卡片（左右滑动切换周；多选模式下隐藏，把空间留给条目）
+                // ⓪ 标题：恢复系统大标题的样式（大号粗体、靠左），但放在列表内容顶部，
+                //    比系统大标题更贴近屏幕顶端（上移、左右位置不变）
+                Section {
+                    Text("小八记账")
+                        .font(.system(size: 32, weight: .bold))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 2, trailing: 20))
+                        .listRowBackground(Color.clear)
+                }
+
+                // ① 周消费卡片（左右滑动切换周；多选模式下隐藏，把空间留给条目）
                 if !isEditing {
                     Section {
                         WeekSummaryCard(
@@ -83,22 +93,14 @@ struct HomeView: View {
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                // 左上角：玻璃效果的标题（多选模式下前面有「取消」）
+                // 左上角：像"短信"App 一样——平时是「选择」，多选时变成「取消」
                 ToolbarItem(placement: .topBarLeading) {
-                    HStack(spacing: 10) {
-                        if isEditing {
-                            Button("取消") { exitEditing() }
+                    if isEditing {
+                        Button("取消") { exitEditing() }
+                    } else {
+                        Button("选择") {
+                            withAnimation { editMode?.wrappedValue = .active }
                         }
-                        Text("小八记账")
-                            .font(.headline)
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 7)
-                            // 液态玻璃标题：染主题色的玻璃胶囊
-                            .glassEffect(
-                                .regular.tint(Design.accentTint),
-                                in: Capsule()
-                            )
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
