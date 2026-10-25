@@ -20,8 +20,8 @@ final class AddExpenseViewModel: ObservableObject {
     @Published var spentAt = Date.now
     /// 备注
     @Published var note = ""
-    /// 选中的分类（App 内手动记账用）
-    @Published var category: ExpenseCategory = .other
+    /// 选中的分类（默认「餐饮」，最常用）
+    @Published var category: ExpenseCategory = .food
 
     // MARK: - 识别状态
 

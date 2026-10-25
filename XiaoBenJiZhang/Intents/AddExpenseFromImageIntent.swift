@@ -78,36 +78,40 @@ struct AddExpenseFromImageIntent: AppIntent {
             throw IntentError(message: "图片识别失败，请换一张更清晰的账单截图试试")
         }
 
-        // 2. 金额：OCR 识别到了就用；识别不到 → 用预设 → 还没有就运行时要求输入
+        // 2. 金额：OCR 识别到了就用；识别不到 → 用预设 → 还没有就运行时要求输入。
+        //    （询问在分享表单等非交互场景可能弹不出来，所以包了容错：
+        //      任何一步弹窗失败都不会让整个动作崩溃）
         let finalAmount: Double
         if let recognized = info.amount, recognized > 0 {
             finalAmount = recognized
         } else if amount > 0 {
             finalAmount = amount
-        } else {
-            let typed = try await $amount.requestValue("没识别到金额，这笔消费是多少元？")
-            guard typed > 0, typed < 10_000_000 else {
-                throw IntentError(message: "金额不太对，请打开小八记账 App 手动记这一笔")
-            }
+        } else if let typed = try? await $amount.requestValue("没识别到金额，这笔消费是多少元？"),
+                  typed > 0, typed < 10_000_000 {
             finalAmount = typed
+        } else {
+            throw IntentError(message: "没拿到金额，这笔没有记上。请打开小八记账 App 手动记")
         }
 
-        // 3. 分类：预设优先；没预设 → 运行时弹列表手动选（不自动识别商家和分类）
+        // 3. 分类：预设优先；没预设 → 运行时弹列表手动选；弹窗失败则用「其他」兜底
         let pickedCategory: ReceiptCategoryOption
         if let preset = category {
             pickedCategory = preset
+        } else if let asked = try? await $category.requestDisambiguation(among: ReceiptCategoryOption.allCases) {
+            pickedCategory = asked
         } else {
-            pickedCategory = try await $category.requestDisambiguation(among: ReceiptCategoryOption.allCases)
+            pickedCategory = .other
         }
 
-        // 4. 备注：预设优先，没预设 → 运行时询问（没有备注就填「无」）
+        // 4. 备注：预设优先；没预设 → 运行时询问；弹窗失败则留空
         let finalNote: String
         let presetNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
         if !presetNote.isEmpty {
             finalNote = presetNote
-        } else {
-            let answer = try await $note.requestValue("这笔消费要加什么备注？没有就填「无」")
+        } else if let answer = try? await $note.requestValue("这笔消费要加什么备注？没有就填「无」") {
             finalNote = answer.trimmingCharacters(in: .whitespacesAndNewlines)
+        } else {
+            finalNote = ""
         }
 
         // 5. 生成缩略图（原图最长边的 1/4，仅存本地）并保存进数据库

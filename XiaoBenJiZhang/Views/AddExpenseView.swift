@@ -15,10 +15,24 @@ struct AddExpenseView: View {
     var body: some View {
         NavigationStack {
             Form {
-                // ① 选图识别区
-                Section("拍小票 / 选账单截图（可选）") {
-                    PhotosPicker(selection: $pickerItem, matching: .images) {
-                        Label("从相册选图，自动识别", systemImage: "photo.on.rectangle.angled")
+                // ① 金额（拍小票识别按钮在金额右侧）
+                Section("金额") {
+                    HStack(spacing: 6) {
+                        Text("¥")
+                            .font(.title2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        TextField("0.00", text: $viewModel.amountText)
+                            .keyboardType(.decimalPad)
+                            .font(.title2.weight(.bold))
+
+                        // 拍小票 / 选账单截图，自动识别
+                        PhotosPicker(selection: $pickerItem, matching: .images) {
+                            Image(systemName: "doc.text.viewfinder")
+                                .font(.title3)
+                                .foregroundStyle(Design.accent)
+                        }
+                        .buttonStyle(.borderless)
+                        .accessibilityLabel("拍小票识别")
                     }
 
                     if viewModel.isScanning {
@@ -57,30 +71,18 @@ struct AddExpenseView: View {
                     }
                 }
 
-                // ② 金额
-                Section("金额") {
-                    HStack(spacing: 4) {
-                        Text("¥")
-                            .font(.title2.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                        TextField("0.00", text: $viewModel.amountText)
-                            .keyboardType(.decimalPad)
-                            .font(.title2.weight(.bold))
-                    }
-                }
-
-                // ③ 分类（小方块网格，点一下就选中）
+                // ② 分类（小方块网格，点一下就选中；默认已选「餐饮」）
                 Section("分类") {
                     categoryGrid
                         .listRowInsets(EdgeInsets(top: 12, leading: 12, bottom: 12, trailing: 12))
                 }
 
-                // ④ 消费时间
+                // ③ 消费时间
                 Section("消费时间") {
                     DatePicker("时间", selection: $viewModel.spentAt)
                 }
 
-                // ⑤ 备注
+                // ④ 备注
                 Section("备注") {
                     TextField("比如：和同学吃麻辣烫", text: $viewModel.note)
                 }

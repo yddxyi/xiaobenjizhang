@@ -18,6 +18,10 @@ struct HomeView: View {
     @State private var showAddSheet = false
     /// 批量选择模式下勾选中的账单
     @State private var selectedIDs = Set<PersistentIdentifier>()
+    /// 周消费卡片当前查看的周（0 = 本周，负数 = 过去的周）
+    @State private var weekOffset = 0
+    /// 被点击、要弹出半屏明细的分类
+    @State private var detailCategory: ExpenseCategory?
 
     private var isEditing: Bool { editMode?.wrappedValue == .active }
 
@@ -26,12 +30,22 @@ struct HomeView: View {
     var body: some View {
         NavigationStack {
             List(selection: $selectedIDs) {
-                // ① 顶部：本周消费汇总卡片
+                // ① 顶部：周消费卡片（左右滑动切换周）
                 Section {
-                    WeekSummaryCard(records: records)
-                        .frame(maxWidth: .infinity)
-                        .listRowInsets(EdgeInsets())
-                        .listRowBackground(Color.clear)
+                    WeekSummaryCard(
+                        records: records,
+                        weekOffset: weekOffset,
+                        onWeekChange: { newOffset in
+                            // 不允许看到"未来"的周
+                            weekOffset = min(0, newOffset)
+                        },
+                        onSelectCategory: { category in
+                            detailCategory = category
+                        }
+                    )
+                    .frame(maxWidth: .infinity)
+                    .listRowInsets(EdgeInsets())
+                    .listRowBackground(Color.clear)
                 }
 
                 // ② 账单明细（按天分组）
@@ -69,7 +83,9 @@ struct HomeView: View {
                 }
             }
             .listStyle(.insetGrouped)
-            .navigationTitle("小八记账")
+            // 标题"小八记账"移到了右上角（见 toolbar），这里不再占一行
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 // 选择模式下：左上角「完成」退出
                 ToolbarItem(placement: .topBarLeading) {
@@ -78,16 +94,16 @@ struct HomeView: View {
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    if isEditing {
-                        // 批量删除按钮（显示已选数量）
-                        Button(role: .destructive) {
-                            deleteSelected()
-                        } label: {
-                            Label("删除（\(selectedIDs.count)）", systemImage: "trash")
-                        }
-                        .disabled(selectedIDs.isEmpty)
-                    } else {
-                        HStack(spacing: 14) {
+                    HStack(spacing: 14) {
+                        if isEditing {
+                            // 批量删除按钮（显示已选数量）
+                            Button(role: .destructive) {
+                                deleteSelected()
+                            } label: {
+                                Label("删除（\(selectedIDs.count)）", systemImage: "trash")
+                            }
+                            .disabled(selectedIDs.isEmpty)
+                        } else {
                             // 导出本周账单（CSV，可存储到"文件"或分享）
                             if let csvURL = weekCSVURL {
                                 ShareLink(item: csvURL, preview: SharePreview("本周账单 CSV")) {
@@ -102,11 +118,23 @@ struct HomeView: View {
                             }
                             .accessibilityLabel("记一笔")
                         }
+                        // 标题放最右侧，节省顶部空间
+                        Text("小八记账")
+                            .font(.headline)
                     }
                 }
             }
             .sheet(isPresented: $showAddSheet) {
                 AddExpenseView()
+            }
+            // 分类明细：半屏悬浮卡片（下滑直接关闭）
+            .sheet(item: $detailCategory) { category in
+                CategoryWeekDetailView(
+                    category: category,
+                    weekStart: WeekStats.mondayStart(
+                        of: WeekStats.calendar.date(byAdding: .day, value: weekOffset * 7, to: .now) ?? .now
+                    )
+                )
             }
         }
     }
