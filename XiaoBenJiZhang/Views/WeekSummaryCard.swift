@@ -126,7 +126,8 @@ struct WeekSummaryCard: View {
                     .foregroundStyle(.white.opacity(0.9))
 
                 // 左右箭头切换上一周 / 下一周（也可以直接滑动卡片）
-                // 更早方向翻到最早有账单的周就停；更近方向最多回到本周
+                // 更早方向翻到最早有账单的周就停；更近方向最多回到本周。
+                // 必须用 .plain 样式：否则 List 行内默认按钮会把"整行点击"都算到按钮上
                 HStack(spacing: 0) {
                     Button {
                         onWeekChange(clamped(weekOffset - 1))   // 更早的一周
@@ -135,6 +136,7 @@ struct WeekSummaryCard: View {
                             .font(.footnote.weight(.bold))
                             .padding(6)
                     }
+                    .buttonStyle(.plain)
                     .disabled(weekOffset <= earliestWeekOffset)
                     .accessibilityLabel("上一周")
 
@@ -145,6 +147,7 @@ struct WeekSummaryCard: View {
                             .font(.footnote.weight(.bold))
                             .padding(6)
                     }
+                    .buttonStyle(.plain)
                     .disabled(weekOffset >= 0)
                     .accessibilityLabel("下一周")
                 }
@@ -197,13 +200,17 @@ struct WeekSummaryCard: View {
             }
         }
         .padding(Design.cardPadding)
-        // 左右滑动切换周：左滑 = 更近的一周，右滑 = 更早的一周（两端自动钳制）
-        .gesture(
+        // 左右滑动切换周：只在"明确的横向滑动"时响应（横向距离足够大、且远大于纵向距离），
+        // 用 simultaneousGesture 避免抢占列表的上下滚动手势
+        .simultaneousGesture(
             DragGesture(minimumDistance: 30).onEnded { value in
-                if value.translation.width < -30 {
-                    onWeekChange(clamped(weekOffset + 1))
-                } else if value.translation.width > 30 {
-                    onWeekChange(clamped(weekOffset - 1))
+                let width = value.translation.width
+                let height = value.translation.height
+                guard abs(width) > 60, abs(width) > abs(height) * 2 else { return }
+                if width < 0 {
+                    onWeekChange(clamped(weekOffset + 1))   // 左滑 = 更近的一周
+                } else {
+                    onWeekChange(clamped(weekOffset - 1))   // 右滑 = 更早的一周
                 }
             }
         )

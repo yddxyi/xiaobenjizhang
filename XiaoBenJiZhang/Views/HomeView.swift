@@ -23,29 +23,34 @@ struct HomeView: View {
     /// 被点击、要弹出半屏明细的分类
     @State private var detailCategory: ExpenseCategory?
 
-    private var isEditing: Bool { editMode?.wrappedValue == .active }
+    /// 是否处于多选状态：系统编辑模式激活，或已经勾选了条目（双指多选时两种情况都覆盖）
+    private var isEditing: Bool {
+        editMode?.wrappedValue == .active || !selectedIDs.isEmpty
+    }
 
     private static let logger = Logger(subsystem: "com.xiaobenjizhang.app", category: "home")
 
     var body: some View {
         NavigationStack {
             List(selection: $selectedIDs) {
-                // ① 顶部：周消费卡片（左右滑动切换周）
-                Section {
-                    WeekSummaryCard(
-                        records: records,
-                        weekOffset: weekOffset,
-                        onWeekChange: { newOffset in
-                            // 不允许看到"未来"的周
-                            weekOffset = min(0, newOffset)
-                        },
-                        onSelectCategory: { category in
-                            detailCategory = category
-                        }
-                    )
-                    .frame(maxWidth: .infinity)
-                    .listRowInsets(EdgeInsets())
-                    .listRowBackground(Color.clear)
+                // ① 顶部：周消费卡片（左右滑动切换周；多选模式下隐藏，把空间留给条目）
+                if !isEditing {
+                    Section {
+                        WeekSummaryCard(
+                            records: records,
+                            weekOffset: weekOffset,
+                            onWeekChange: { newOffset in
+                                // 不允许看到"未来"的周
+                                weekOffset = min(0, newOffset)
+                            },
+                            onSelectCategory: { category in
+                                detailCategory = category
+                            }
+                        )
+                        .frame(maxWidth: .infinity)
+                        .listRowInsets(EdgeInsets())
+                        .listRowBackground(Color.clear)
+                    }
                 }
 
                 // ② 账单明细（按天分组）
@@ -159,14 +164,19 @@ struct HomeView: View {
             .sorted { $0.spentAt < $1.spentAt }
         guard !weekRecords.isEmpty else { return nil }
 
-        // 表头前加 BOM，保证 Excel 打开中文不乱码
+        // 表头前加 BOM，保证 Excel 打开中文不乱码；所有字段统一加引号转义，逗号/引号/换行都不会破坏表格
+        func escape(_ field: String) -> String {
+            "\"\(field.replacingOccurrences(of: "\"", with: "\"\""))\""
+        }
         var lines = ["\u{FEFF}日期,时间,分类,金额,备注"]
         for record in weekRecords {
-            let note = record.note.contains(",") ? "\"\(record.note)\"" : record.note
-            lines.append("""
-            \(Formatters.fullDate(record.spentAt)),\(Formatters.time(record.spentAt)),\
-            \(record.categoryTitle),\(String(format: "%.2f", record.amount)),\(note)
-            """)
+            lines.append([
+                escape(Formatters.fullDate(record.spentAt)),
+                escape(Formatters.time(record.spentAt)),
+                escape(record.categoryTitle),
+                escape(String(format: "%.2f", record.amount)),
+                escape(record.note),
+            ].joined(separator: ","))
         }
         let total = weekRecords.reduce(0) { $0 + $1.amount }
         lines.append(",,,,")
