@@ -87,23 +87,27 @@ struct HomeView: View {
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                // 选择模式下：左上角「完成」退出
+                // 左上角：纯文字标题（选择模式下前面多一个「完成」）
                 ToolbarItem(placement: .topBarLeading) {
-                    if isEditing {
-                        Button("完成") { exitEditing() }
+                    HStack(spacing: 10) {
+                        if isEditing {
+                            Button("完成") { exitEditing() }
+                        }
+                        Text("小八记账")
+                            .font(.headline)
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    HStack(spacing: 14) {
-                        if isEditing {
-                            // 批量删除按钮（显示已选数量）
-                            Button(role: .destructive) {
-                                deleteSelected()
-                            } label: {
-                                Label("删除（\(selectedIDs.count)）", systemImage: "trash")
-                            }
-                            .disabled(selectedIDs.isEmpty)
-                        } else {
+                    if isEditing {
+                        // 批量删除按钮（显示已选数量）
+                        Button(role: .destructive) {
+                            deleteSelected()
+                        } label: {
+                            Label("删除（\(selectedIDs.count)）", systemImage: "trash")
+                        }
+                        .disabled(selectedIDs.isEmpty)
+                    } else {
+                        HStack(spacing: 14) {
                             // 导出本周账单（CSV，可存储到"文件"或分享）
                             if let csvURL = weekCSVURL {
                                 ShareLink(item: csvURL, preview: SharePreview("本周账单 CSV")) {
@@ -118,9 +122,6 @@ struct HomeView: View {
                             }
                             .accessibilityLabel("记一笔")
                         }
-                        // 标题放最右侧，节省顶部空间
-                        Text("小八记账")
-                            .font(.headline)
                     }
                 }
             }

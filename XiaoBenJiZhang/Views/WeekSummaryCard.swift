@@ -72,12 +72,28 @@ struct WeekSummaryCard: View {
         }
     }
 
-    /// 卡片标题：本周 / 上周 / N周前
+    /// 最早可以翻到的周（以最早一条账单所在周为准；没有账单时只能看本周）
+    private var earliestWeekOffset: Int {
+        guard let earliest = records.map(\.spentAt).min() else { return 0 }
+        let days = WeekStats.calendar.dateComponents([.day], from: WeekStats.mondayStart(of: earliest), to: WeekStats.mondayStart(of: .now)).day ?? 0
+        guard days > 0 else { return 0 }
+        return -Int(ceil(Double(days) / 7))
+    }
+
+    /// 统一在这里钳制周偏移：不能到未来，也不能早于最早有账单的周
+    private func clamped(_ offset: Int) -> Int {
+        max(earliestWeekOffset, min(0, offset))
+    }
+
+    /// 卡片标题：本周 / 上周 / 更早的显示日期（每一周都有明确的标识）
     private var titleText: String {
         switch weekOffset {
         case 0: return "本周消费"
         case -1: return "上周消费"
-        default: return "\(-weekOffset)周前消费"
+        default:
+            let formatter = DateFormatter()
+            formatter.dateFormat = "M月d日"
+            return "\(formatter.string(from: interval.start))那周消费"
         }
     }
 
@@ -110,18 +126,20 @@ struct WeekSummaryCard: View {
                     .foregroundStyle(.white.opacity(0.9))
 
                 // 左右箭头切换上一周 / 下一周（也可以直接滑动卡片）
+                // 更早方向翻到最早有账单的周就停；更近方向最多回到本周
                 HStack(spacing: 0) {
                     Button {
-                        onWeekChange(weekOffset - 1)   // 更早的一周
+                        onWeekChange(clamped(weekOffset - 1))   // 更早的一周
                     } label: {
                         Image(systemName: "chevron.left")
                             .font(.footnote.weight(.bold))
                             .padding(6)
                     }
+                    .disabled(weekOffset <= earliestWeekOffset)
                     .accessibilityLabel("上一周")
 
                     Button {
-                        onWeekChange(weekOffset + 1)   // 更近的一周
+                        onWeekChange(clamped(weekOffset + 1))   // 更近的一周
                     } label: {
                         Image(systemName: "chevron.right")
                             .font(.footnote.weight(.bold))
@@ -179,13 +197,13 @@ struct WeekSummaryCard: View {
             }
         }
         .padding(Design.cardPadding)
-        // 左右滑动切换周：左滑 = 更近的一周，右滑 = 更早的一周
+        // 左右滑动切换周：左滑 = 更近的一周，右滑 = 更早的一周（两端自动钳制）
         .gesture(
             DragGesture(minimumDistance: 30).onEnded { value in
                 if value.translation.width < -30 {
-                    onWeekChange(weekOffset + 1)
+                    onWeekChange(clamped(weekOffset + 1))
                 } else if value.translation.width > 30 {
-                    onWeekChange(weekOffset - 1)
+                    onWeekChange(clamped(weekOffset - 1))
                 }
             }
         )
