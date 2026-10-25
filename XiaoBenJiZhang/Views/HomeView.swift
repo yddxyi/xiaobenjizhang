@@ -64,16 +64,7 @@ struct HomeView: View {
                                     ExpenseDetailView(record: record)
                                 } label: {
                                     ExpenseRow(record: record)
-                                        // 长按 0.5 秒进入批量选择模式
-                                        .simultaneousGesture(
-                                            LongPressGesture(minimumDuration: 0.5).onEnded { _ in
-                                                withAnimation { editMode?.wrappedValue = .active }
-                                            }
-                                        )
                                 }
-                            }
-                            .onDelete { offsets in
-                                deleteRecords(at: offsets, in: group.records)
                             }
                         } header: {
                             Text(sectionTitle(for: group.date, total: group.total))
@@ -87,24 +78,31 @@ struct HomeView: View {
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                // 左上角：纯文字标题（选择模式下前面多一个「完成」）
+                // 左上角：玻璃效果的标题（多选模式下前面有「取消」）
                 ToolbarItem(placement: .topBarLeading) {
                     HStack(spacing: 10) {
                         if isEditing {
-                            Button("完成") { exitEditing() }
+                            Button("取消") { exitEditing() }
                         }
                         Text("小八记账")
                             .font(.headline)
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 7)
+                            // 液态玻璃标题：染主题色的玻璃胶囊
+                            .glassEffect(
+                                .regular.tint(Design.accentTint),
+                                in: Capsule()
+                            )
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     if isEditing {
-                        // 批量删除按钮（显示已选数量）
-                        Button(role: .destructive) {
+                        // 右上角：文字按钮批量删除
+                        Button("删除\(selectedIDs.isEmpty ? "" : "（\(selectedIDs.count)）")") {
                             deleteSelected()
-                        } label: {
-                            Label("删除（\(selectedIDs.count)）", systemImage: "trash")
                         }
+                        .foregroundStyle(.red)
                         .disabled(selectedIDs.isEmpty)
                     } else {
                         HStack(spacing: 14) {
@@ -208,17 +206,6 @@ struct HomeView: View {
             Self.logger.error("批量删除失败: \(error.localizedDescription, privacy: .public)")
         }
         exitEditing()
-    }
-
-    private func deleteRecords(at offsets: IndexSet, in group: [ExpenseRecord]) {
-        do {
-            for index in offsets {
-                modelContext.delete(group[index])
-            }
-            try modelContext.save()
-        } catch {
-            Self.logger.error("删除账单失败: \(error.localizedDescription, privacy: .public)")
-        }
     }
 
     /// 分组标题，例如：`今天 · 10月24日 · ¥58.00`
