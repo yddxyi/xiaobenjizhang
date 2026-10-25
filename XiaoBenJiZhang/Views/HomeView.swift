@@ -33,16 +33,6 @@ struct HomeView: View {
     var body: some View {
         NavigationStack {
             List(selection: $selectedIDs) {
-                // ⓪ 标题：恢复系统大标题的样式（大号粗体、靠左），但放在列表内容顶部，
-                //    比系统大标题更贴近屏幕顶端（上移、左右位置不变）
-                Section {
-                    Text("小八记账")
-                        .font(.system(size: 32, weight: .bold))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 2, trailing: 20))
-                        .listRowBackground(Color.clear)
-                }
-
                 // ① 周消费卡片（左右滑动切换周；多选模式下隐藏，把空间留给条目）
                 if !isEditing {
                     Section {
@@ -89,9 +79,8 @@ struct HomeView: View {
                 }
             }
             .listStyle(.insetGrouped)
-            // 标题"小八记账"移到了右上角（见 toolbar），这里不再占一行
-            .navigationTitle("")
-            .navigationBarTitleDisplayMode(.inline)
+            // 标题：系统默认大标题（最初的版本，未做任何自定义）
+            .navigationTitle("小八记账")
             .toolbar {
                 // 左上角：像"短信"App 一样——平时是「选择」，多选时变成「取消」
                 ToolbarItem(placement: .topBarLeading) {
