@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 
 /// 周统计的小工具（周一作为一周的开始，符合国内习惯）
 enum WeekStats {
