@@ -2,12 +2,12 @@ import AppIntents
 import SwiftData
 import os
 
-/// 快捷指令里可选的分类选项（和 App 内置的 3 + 其他 保持一致）
+/// 快捷指令里可选的分类选项（和 App 内置分类保持一致，由用户手动选择）
 enum ReceiptCategoryOption: String, CaseIterable, AppEnum {
     case food          // 餐饮
     case transport     // 交通
     case entertainment // 娱乐
-    case other         // 其他（自定义）
+    case other         // 其他
 
     static var typeDisplayRepresentation = TypeDisplayRepresentation(name: "分类")
 
@@ -15,15 +15,16 @@ enum ReceiptCategoryOption: String, CaseIterable, AppEnum {
         .food:          DisplayRepresentation(title: "餐饮 🍜"),
         .transport:     DisplayRepresentation(title: "交通 🚌"),
         .entertainment: DisplayRepresentation(title: "娱乐 🎮"),
-        .other:         DisplayRepresentation(title: "其他（手动输入）"),
+        .other:         DisplayRepresentation(title: "其他 📦"),
     ]
 }
 
 /// 快捷指令动作：识别小票并记账
 ///
 /// 在「快捷指令」App 里搜索"识别小票并记账"（或"小八记账"）即可找到。
-/// 传入消费截图 → 本地 OCR 识别 → 询问分类和备注 → 存入账本。
-/// （分类和备注如果在快捷指令编辑器里提前填了就不问，直接用）
+/// 流程：传入消费截图 → 本地 OCR 识别（金额识别不到会要求手动输入）→
+/// 选择分类（一律手动选，不自动猜）→ 询问备注 → 存入账本。
+/// 所有参数如果在快捷指令编辑器里提前填了就跳过询问。
 struct AddExpenseFromImageIntent: AppIntent {
 
     static let logger = Logger(subsystem: "com.xiaobenjizhang.app", category: "intent")
@@ -32,7 +33,7 @@ struct AddExpenseFromImageIntent: AppIntent {
 
     static var title: LocalizedStringResource = "识别小票并记账"
     static var description = IntentDescription(
-        "传入一张消费截图（微信/支付宝账单等），自动识别金额和消费时间，然后询问分类和备注，保存截图缩略图"
+        "传入一张消费截图（微信/支付宝账单等），自动识别金额和消费时间（识别不到会要求输入金额），手动选分类、填备注后保存"
     )
 
     /// 记完账不需要打开 App，直接在快捷指令里显示结果
@@ -46,20 +47,20 @@ struct AddExpenseFromImageIntent: AppIntent {
     @Parameter(title: "消费截图", supportedTypeIdentifiers: ["public.image"])
     var image: IntentFile
 
-    /// 可选的分类：提前选了就直接用；没选会在运行时弹列表让用户挑
+    /// 可选的分类：提前选了就直接用；没选会在运行时弹列表让用户挑（不自动识别）
     @Parameter(title: "分类")
     var category: ReceiptCategoryOption?
 
-    /// 自定义分类名：分类选「其他」时使用；没提前填的话运行时追问
-    @Parameter(title: "自定义分类名", default: "")
-    var customCategoryName: String
+    /// 金额：OCR 识别失败时使用。提前填了就用；没填会在运行时要求输入
+    @Parameter(title: "金额", default: 0.0)
+    var amount: Double
 
     /// 备注：提前填了就直接用；没填会在运行时询问
     @Parameter(title: "备注", default: "")
     var note: String
 
     static var parameterSummary: some ParameterSummary {
-        Summary("识别 \(\.$image) 并记账（未填的分类和备注会运行时询问）")
+        Summary("识别 \(\.$image) 并记账（金额识别不了会要求输入）")
     }
 
     // MARK: - 执行
@@ -77,30 +78,26 @@ struct AddExpenseFromImageIntent: AppIntent {
             throw IntentError(message: "图片识别失败，请换一张更清晰的账单截图试试")
         }
 
-        // 2. 必须识别到金额才算成功
-        guard let amount = info.amount, amount > 0 else {
-            throw IntentError(message: "没有识别到金额，请打开小八记账 App 手动记这一笔")
+        // 2. 金额：OCR 识别到了就用；识别不到 → 用预设 → 还没有就运行时要求输入
+        let finalAmount: Double
+        if let recognized = info.amount, recognized > 0 {
+            finalAmount = recognized
+        } else if amount > 0 {
+            finalAmount = amount
+        } else {
+            let typed = try await $amount.requestValue("没识别到金额，这笔消费是多少元？")
+            guard typed > 0, typed < 10_000_000 else {
+                throw IntentError(message: "金额不太对，请打开小八记账 App 手动记这一笔")
+            }
+            finalAmount = typed
         }
 
-        // 3. 分类：编辑器里预设了就用预设；没预设 → 运行时弹列表让用户选
+        // 3. 分类：预设优先；没预设 → 运行时弹列表手动选（不自动识别商家和分类）
         let pickedCategory: ReceiptCategoryOption
         if let preset = category {
             pickedCategory = preset
         } else {
             pickedCategory = try await $category.requestDisambiguation(among: ReceiptCategoryOption.allCases)
-        }
-
-        // 选了「其他」→ 用自定义分类名（预设优先，否则追问）
-        let categoryRaw: String
-        if pickedCategory == .other {
-            let typed = customCategoryName.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !typed.isEmpty {
-                categoryRaw = typed
-            } else {
-                categoryRaw = try await $customCategoryName.requestValue("其他分类的名字叫什么？")
-            }
-        } else {
-            categoryRaw = pickedCategory.rawValue
         }
 
         // 4. 备注：预设优先，没预设 → 运行时询问（没有备注就填「无」）
@@ -116,13 +113,12 @@ struct AddExpenseFromImageIntent: AppIntent {
         // 5. 生成缩略图（原图最长边的 1/4，仅存本地）并保存进数据库
         let thumbnail = ThumbnailGenerator.thumbnail(from: data)
         let record = ExpenseRecord(
-            amount: amount,
+            amount: finalAmount,
             spentAt: info.spentAt ?? .now,
             note: finalNote == "无" ? "" : finalNote,
-            category: .other,
+            category: ExpenseCategory(rawValue: pickedCategory.rawValue) ?? .other,
             thumbnail: thumbnail
         )
-        record.categoryRaw = categoryRaw
 
         let context = AppModelContainer.newContext()
         context.insert(record)
@@ -133,14 +129,13 @@ struct AddExpenseFromImageIntent: AppIntent {
             throw IntentError(message: "保存失败了，请再试一次")
         }
 
-        // 6. 用友好的名字播报结果（内置分类显示中文名，自定义显示名字本身）
-        let displayCategory = ExpenseCategory(rawValue: categoryRaw)?.title ?? categoryRaw
-        let displayEmoji = ExpenseCategory(rawValue: categoryRaw)?.emoji ?? "🏷️"
-        let formatted = String(format: "%.2f", amount)
-        Self.logger.info("快捷指令记账成功：\(displayCategory, privacy: .public) ¥\(formatted, privacy: .public)")
+        // 6. 播报结果
+        let displayCategory = ExpenseCategory(rawValue: pickedCategory.rawValue) ?? .other
+        let formatted = String(format: "%.2f", finalAmount)
+        Self.logger.info("快捷指令记账成功：\(displayCategory.title, privacy: .public) ¥\(formatted, privacy: .public)")
 
         let noteSuffix = finalNote.isEmpty || finalNote == "无" ? "" : "（\(finalNote)）"
-        return .result(dialog: "记账成功！\(displayEmoji) \(displayCategory) ¥\(formatted)\(noteSuffix)")
+        return .result(dialog: "记账成功！\(displayCategory.emoji) \(displayCategory.title) ¥\(formatted)\(noteSuffix)")
     }
 }
 

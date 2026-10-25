@@ -23,19 +23,6 @@ enum WeekStats {
         return DateInterval(start: start, end: end)
     }
 
-    /// 一周里每天的消费金额，下标 0 = 周一 … 6 = 周日
-    static func dailyTotals(records: [ExpenseRecord], weekOf date: Date = .now) -> [Double] {
-        let interval = weekInterval(of: date)
-        var totals = Array(repeating: 0.0, count: 7)
-        for record in records where interval.contains(record.spentAt) {
-            // Calendar 里 1=周日 … 7=周六，换算成 0=周一 的下标
-            let weekday = calendar.component(.weekday, from: record.spentAt)
-            let index = (weekday + 5) % 7
-            totals[index] += record.amount
-        }
-        return totals
-    }
-
     /// 上周消费总额（用来做"比上周多/少"的对比）
     static func lastWeekTotal(records: [ExpenseRecord]) -> Double {
         guard let lastMonday = calendar.date(byAdding: .day, value: -7, to: mondayStart(of: .now)) else { return 0 }
@@ -46,27 +33,24 @@ enum WeekStats {
     }
 }
 
-/// 主页顶部的大卡片：本周消费总金额 + 笔数 + 和上周对比 + 每天柱状图
+/// 主页顶部大卡片：本周总消费 + 各分类的消费金额和占比。
+/// 点击某个分类行 → 进入该分类本周的账单明细页。
 struct WeekSummaryCard: View {
 
     let records: [ExpenseRecord]
 
-    private static let dayLabels = ["一", "二", "三", "四", "五", "六", "日"]
-
     // MARK: - 统计数据
 
-    private var weekTotal: Double {
-        WeekStats.dailyTotals(records: records).reduce(0, +)
+    /// 本周（周一开始）的所有账单
+    private var weekRecords: [ExpenseRecord] {
+        records.filter { WeekStats.weekInterval(of: .now).contains($0.spentAt) }
     }
 
-    private var weekCount: Int {
-        let interval = WeekStats.weekInterval(of: .now)
-        return records.filter { interval.contains($0.spentAt) }.count
-    }
+    private var weekTotal: Double { weekRecords.reduce(0) { $0 + $1.amount } }
 
-    private var lastWeekTotal: Double {
-        WeekStats.lastWeekTotal(records: records)
-    }
+    private var weekCount: Int { weekRecords.count }
+
+    private var lastWeekTotal: Double { WeekStats.lastWeekTotal(records: records) }
 
     /// 和上周对比的文字（上周没花过钱就不显示）
     private var comparisonText: String? {
@@ -87,13 +71,19 @@ struct WeekSummaryCard: View {
         return "\(start) – \(end)"
     }
 
+    /// 本周各分类消费，从多到少排列（只列有消费的分类）
+    private var categoryTotals: [(category: ExpenseCategory, total: Double)] {
+        ExpenseCategory.allCases
+            .map { category in
+                (category, weekRecords.filter { $0.category == category }.reduce(0) { $0 + $1.amount })
+            }
+            .filter { $0.total > 0 }
+            .sorted { $0.total > $1.total }
+    }
+
     // MARK: - 界面
 
     var body: some View {
-        let dailyTotals = WeekStats.dailyTotals(records: records)
-        let maxDaily = max(dailyTotals.max() ?? 0, 1)
-        let todayIndex = (WeekStats.calendar.component(.weekday, from: .now) + 5) % 7
-
         VStack(alignment: .leading, spacing: 14) {
             // 第一行：标题 + 日期范围
             HStack {
@@ -128,37 +118,106 @@ struct WeekSummaryCard: View {
             .font(.footnote)
             .foregroundStyle(.white.opacity(0.85))
 
-            // 第四行：周一到周日的消费柱状图
-            HStack(alignment: .bottom, spacing: 10) {
-                ForEach(0..<7, id: \.self) { index in
-                    let isToday = index == todayIndex
-                    VStack(spacing: 5) {
-                        Capsule()
-                            .fill(isToday ? Color.white : Color.white.opacity(0.45))
-                            .frame(height: barHeight(amount: dailyTotals[index], max: maxDaily))
-                        Text(Self.dayLabels[index])
-                            .font(.caption2)
-                            .foregroundStyle(isToday ? .white : .white.opacity(0.6))
+            Divider().overlay(.white.opacity(0.3))
+
+            // 第四行起：各分类消费（点击查看该分类本周的账单明细）
+            if categoryTotals.isEmpty {
+                Text("本周还没有分类账单，记一笔试试")
+                    .font(.footnote)
+                    .foregroundStyle(.white.opacity(0.8))
+            } else {
+                ForEach(categoryTotals, id: \.category) { item in
+                    NavigationLink {
+                        CategoryWeekDetailView(category: item.category, weekRecords: weekRecords)
+                    } label: {
+                        categoryRow(item.category, total: item.total)
                     }
-                    .frame(maxWidth: .infinity)
+                    .buttonStyle(.plain)
                 }
             }
         }
         .padding(Design.cardPadding)
-        // iOS 26 液态玻璃（Liquid Glass）：卡片不再是死板的渐变背景，
-        // 而是一块染上主题色 tint 的"实时玻璃"，会随底下滚动的内容
-        // 产生折射和高光流动；.interactive() 让按压时有玻璃的物理反馈
+        // iOS 26 液态玻璃（Liquid Glass）：染上主题色的实时玻璃，
+        // 随底下滚动内容产生折射和高光流动；按压有玻璃的物理反馈
         .glassEffect(
             .regular.tint(Design.accentTint).interactive(),
             in: RoundedRectangle(cornerRadius: Design.cornerRadius, style: .continuous)
         )
-        // 玻璃上的白色文字加一层投影，保证任何背景下都清晰可读
+        // 玻璃上的白色文字加投影，保证任何背景下清晰可读
         .shadow(color: .black.opacity(0.25), radius: 1.5, y: 1)
     }
 
-    /// 柱子的高度：按当天金额 / 本周最大金额 的比例缩放
-    private func barHeight(amount: Double, max maxAmount: Double) -> CGFloat {
-        guard amount > 0 else { return 4 } // 没花钱的天留一个小底座
-        return 6 + CGFloat(amount / maxAmount) * 54
+    /// 单个分类行：emoji + 名称 + 占比条 + 金额 + 百分比
+    private func categoryRow(_ category: ExpenseCategory, total: Double) -> some View {
+        let percent: Double = weekTotal > 0 ? total / weekTotal : 0
+        return HStack(spacing: 10) {
+            Text(category.emoji)
+                .font(.title3)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(category.title)
+                    .font(.subheadline.weight(.medium))
+                // 占比条：底轨半透明，前景按比例填充
+                ZStack(alignment: .leading) {
+                    Capsule().fill(.white.opacity(0.25)).frame(width: 110, height: 6)
+                    Capsule().fill(.white.opacity(0.95)).frame(width: max(6, 110 * percent), height: 6)
+                }
+            }
+
+            Spacer()
+
+            VStack(alignment: .trailing, spacing: 2) {
+                Text("¥\(total, format: .number.precision(.fractionLength(2)))")
+                    .font(.body.weight(.semibold))
+                    .monospacedDigit()
+                Text("\(Int((percent * 100).rounded()))%")
+                    .font(.caption2)
+                    .foregroundStyle(.white.opacity(0.8))
+            }
+
+            Image(systemName: "chevron.right")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.white.opacity(0.6))
+        }
+        .foregroundStyle(.white)
+        .contentShape(Rectangle())
+    }
+}
+
+/// 某个分类在本周的账单明细页（从本周卡片点击进入）
+struct CategoryWeekDetailView: View {
+
+    let category: ExpenseCategory
+    /// 本周的全部账单（进入后按分类过滤）
+    let weekRecords: [ExpenseRecord]
+
+    @Environment(\.modelContext) private var modelContext
+
+    /// 该分类本周的账单（新的在前）
+    private var items: [ExpenseRecord] {
+        weekRecords
+            .filter { $0.category == category }
+            .sorted { $0.spentAt > $1.spentAt }
+    }
+
+    var body: some View {
+        List {
+            ForEach(items) { record in
+                ExpenseRow(record: record)
+            }
+            .onDelete { offsets in
+                do {
+                    for index in offsets {
+                        modelContext.delete(items[index])
+                    }
+                    try modelContext.save()
+                } catch {
+                    // 删除失败不影响界面，下次进来自动刷新
+                }
+            }
+        }
+        .listStyle(.insetGrouped)
+        .navigationTitle("\(category.emoji) \(category.title) · 本周 \(items.count) 笔")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }

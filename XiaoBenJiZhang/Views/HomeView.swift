@@ -87,12 +87,21 @@ struct HomeView: View {
                         }
                         .disabled(selectedIDs.isEmpty)
                     } else {
-                        Button {
-                            showAddSheet = true
-                        } label: {
-                            Image(systemName: "plus.circle.fill").font(.title3)
+                        HStack(spacing: 14) {
+                            // 导出本周账单（CSV，可存储到"文件"或分享）
+                            if let csvURL = weekCSVURL {
+                                ShareLink(item: csvURL, preview: SharePreview("本周账单 CSV")) {
+                                    Image(systemName: "square.and.arrow.up").font(.title3)
+                                }
+                                .accessibilityLabel("导出本周账单")
+                            }
+                            Button {
+                                showAddSheet = true
+                            } label: {
+                                Image(systemName: "plus.circle.fill").font(.title3)
+                            }
+                            .accessibilityLabel("记一笔")
                         }
-                        .accessibilityLabel("记一笔")
                     }
                 }
             }
@@ -113,6 +122,40 @@ struct HomeView: View {
             .map { day in
                 DayGroup(date: day, records: groups[day]!.sorted { $0.spentAt > $1.spentAt })
             }
+    }
+
+    /// 把本周账单导出成 CSV 文件（返回临时文件地址；本周没账单时返回 nil，按钮自动隐藏）
+    private var weekCSVURL: URL? {
+        let interval = WeekStats.weekInterval(of: .now)
+        let weekRecords = records
+            .filter { interval.contains($0.spentAt) }
+            .sorted { $0.spentAt < $1.spentAt }
+        guard !weekRecords.isEmpty else { return nil }
+
+        // 表头前加 BOM，保证 Excel 打开中文不乱码
+        var lines = ["\u{FEFF}日期,时间,分类,金额,备注"]
+        for record in weekRecords {
+            let note = record.note.contains(",") ? "\"\(record.note)\"" : record.note
+            lines.append("""
+            \(Formatters.fullDate(record.spentAt)),\(Formatters.time(record.spentAt)),\
+            \(record.categoryTitle),\(String(format: "%.2f", record.amount)),\(note)
+            """)
+        }
+        let total = weekRecords.reduce(0) { $0 + $1.amount }
+        lines.append(",,,,")
+        lines.append("合计,,,¥\(String(format: "%.2f", total)),共 \(weekRecords.count) 笔")
+
+        let formatter = DateFormatter()
+        formatter.dateFormat = "M月d日"
+        let fileName = "小八记账-本周账单-\(formatter.string(from: interval.start))至\(formatter.string(from: .now)).csv"
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
+        do {
+            try lines.joined(separator: "\n").write(to: url, atomically: true, encoding: .utf8)
+            return url
+        } catch {
+            Self.logger.error("导出 CSV 失败: \(error.localizedDescription, privacy: .public)")
+            return nil
+        }
     }
 
     // MARK: - 操作

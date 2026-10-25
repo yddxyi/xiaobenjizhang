@@ -73,10 +73,6 @@ struct AddExpenseView: View {
                 Section("分类") {
                     categoryGrid
                         .listRowInsets(EdgeInsets(top: 12, leading: 12, bottom: 12, trailing: 12))
-                    // 选「其他」时可以填自定义分类名（比如"剧本杀"）
-                    if viewModel.category == .other {
-                        TextField("自定义分类名（可留空）", text: $viewModel.customCategoryName)
-                    }
                 }
 
                 // ④ 消费时间

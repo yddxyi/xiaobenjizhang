@@ -4,12 +4,10 @@ import os
 
 /// 一次小票识别的结果
 struct ReceiptInfo {
-    /// 识别出的金额（识别不到为 nil）
+    /// 识别出的金额（识别不到为 nil，由调用方决定是否追问用户）
     var amount: Double?
     /// 识别出的消费时间（识别不到为 nil）
     var spentAt: Date?
-    /// 根据文字猜测的分类
-    var category: ExpenseCategory
     /// 识别出的全部文字（调试 / 展示"识别原文"用）
     var rawText: String
 }
@@ -70,7 +68,6 @@ enum ReceiptScanner {
         return ReceiptInfo(
             amount: parseAmount(in: normalized),
             spentAt: parseDate(in: normalized),
-            category: ExpenseCategory.guess(from: normalized),
             rawText: text
         )
     }
