@@ -87,10 +87,7 @@ struct AddExpenseFromImageIntent: AppIntent {
         if let preset = category {
             pickedCategory = preset
         } else {
-            pickedCategory = try await $category.requestDisambiguation(
-                among: ReceiptCategoryOption.allCases,
-                prompt: "这笔消费属于哪个分类？"
-            )
+            pickedCategory = try await $category.requestDisambiguation(among: ReceiptCategoryOption.allCases)
         }
 
         // 选了「其他」→ 用自定义分类名（预设优先，否则追问）
